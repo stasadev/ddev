@@ -241,7 +241,7 @@ release:
 brews:
 - name: ddev
   ids:
-  - ddev
+    - ddev
   repository:
     owner: "{{ .Env.REPOSITORY_OWNER }}"
     name: homebrew-ddev
@@ -256,11 +256,77 @@ brews:
     - name: mkcert
 
   custom_block: |
+    # Custom option for PR installation
+    option "with-pr=", "Install from a specific pull request number"
+    
     head do
       url "https://github.com/{{ .Env.REPOSITORY_OWNER }}/ddev.git", branch: "main"
       depends_on "go" => :build
       depends_on "make" => :build
     end
+    
+    # Helper methods for different installation types
+    private
+    
+    def install_from_pr(pr_number)
+      ohai "Installing from PR ##{pr_number}"
+    
+      # Ensure build dependencies using Homebrew's system
+      deps = %w[go make]
+      deps.each do |dep|
+        next if Formula[dep].installed?
+        ohai "Installing build dependency: #{dep}"
+        system "brew", "install", dep
+      end
+    
+      # Clone the repository to a temporary location
+      temp_dir = Dir.mktmpdir
+      original_dir = Dir.pwd
+    
+      begin
+        Dir.chdir(temp_dir)
+        # Initialize git repo and fetch only the PR we need
+        system "git", "init"
+        system "git", "remote", "add", "origin", "https://github.com/{{ .Env.REPOSITORY_OWNER }}/ddev.git"
+        system "git", "fetch", "--depth=1", "origin", "pull/#{pr_number}/head"
+        system "git", "checkout", "FETCH_HEAD"
+    
+        # Build from source
+        build_from_source
+      ensure
+        Dir.chdir(original_dir)
+        FileUtils.remove_entry(temp_dir)
+      end
+    end
+    
+    def build_from_source
+      os = OS.mac? ? "darwin" : "linux"
+      arch = Hardware::CPU.arm? ? "arm64" : "amd64"
+      system "mkdir", "-p", "#{bin}"
+      system "make", "build", "completions"
+      system "cp", ".gotmp/bin/" + os + "_" + arch + "/ddev", "#{bin}/ddev"
+      system "cp", ".gotmp/bin/" + os + "_" + arch + "/ddev-hostname", "#{bin}/ddev-hostname"
+      bash_completion.install ".gotmp/bin/completions/ddev_bash_completion.sh" => "ddev"
+      zsh_completion.install ".gotmp/bin/completions/ddev_zsh_completion.sh" => "_ddev"
+      fish_completion.install ".gotmp/bin/completions/ddev_fish_completion.sh" => "ddev.fish"
+    end
+    
+    def install_from_binary
+      bin.install "ddev"
+      bin.install "ddev-hostname"
+      bash_completion.install "ddev_bash_completion.sh" => "ddev"
+      zsh_completion.install "ddev_zsh_completion.sh" => "_ddev"
+      fish_completion.install "ddev_fish_completion.sh" => "ddev.fish"
+    end
+    
+    def install_from_head
+      system "sh", "-c", "git fetch --unshallow >/dev/null 2>&1" if File.exist?("#{HOMEBREW_REPOSITORY}/.git/shallow")
+      system "sh", "-c", "git fetch --tags -f >/dev/null 2>&1"
+      build_from_source
+    end
+    
+    public
+    
     # fail fast if tapped under the old drud or rfay names
     def initialize(*args, **kwargs)
       super(*args, **kwargs)
@@ -277,24 +343,18 @@ brews:
     end
 
   install: |
-    if build.head?
-        system "sh", "-c", "git fetch --unshallow >/dev/null 2>&1" if File.exist?("#{HOMEBREW_REPOSITORY}/.git/shallow")
-        system "sh", "-c", "git fetch --tags -f >/dev/null 2>&1"
-        os = OS.mac? ? "darwin" : "linux"
-        arch = Hardware::CPU.arm? ? "arm64" : "amd64"
-        system "mkdir", "-p", "#{bin}"
-        system "make", "build", "completions"
-        system "cp", ".gotmp/bin/" + os + "_" + arch + "/ddev", "#{bin}/ddev"
-        system "cp", ".gotmp/bin/" + os + "_" + arch + "/ddev-hostname", "#{bin}/ddev-hostname"
-        bash_completion.install ".gotmp/bin/completions/ddev_bash_completion.sh" => "ddev"
-        zsh_completion.install ".gotmp/bin/completions/ddev_zsh_completion.sh" => "_ddev"
-        fish_completion.install ".gotmp/bin/completions/ddev_fish_completion.sh" => "ddev.fish"
+    # Support both custom option and environment variable
+    pr_number = build.with?("with-pr") ? build.option("with-pr") : ENV["DDEV_PR"]
+    
+    if pr_number && build.head?
+      opoo "Both --HEAD and --with-pr specified. Installing from PR ##{pr_number}, ignoring --HEAD."
+      install_from_pr(pr_number)
+    elsif pr_number
+      install_from_pr(pr_number)
+    elsif build.head?
+      install_from_head
     else
-        bin.install "ddev"
-        bin.install "ddev-hostname"
-        bash_completion.install "ddev_bash_completion.sh" => "ddev"
-        zsh_completion.install "ddev_zsh_completion.sh" => "_ddev"
-        fish_completion.install "ddev_fish_completion.sh" => "ddev.fish"
+      install_from_binary
     end
 
   test: |
