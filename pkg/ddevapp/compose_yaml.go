@@ -10,6 +10,7 @@ import (
 	"github.com/ddev/ddev/pkg/fileutil"
 	"github.com/ddev/ddev/pkg/output"
 	"github.com/ddev/ddev/pkg/util"
+	"github.com/ddev/ddev/pkg/versionconstants"
 )
 
 // WriteDockerComposeYAML writes a .ddev-docker-compose-base.yaml and related to the .ddev directory.
@@ -160,7 +161,9 @@ func fixupComposeYaml(yamlStr string, app *DdevApp) (*composeTypes.Project, erro
 			network.External = false
 		}
 		if !network.External {
-			network.Labels["com.ddev.platform"] = "ddev"
+			network.Labels = network.Labels.
+				Add("com.ddev.platform", "ddev").
+				Add("com.ddev.version", versionconstants.DdevVersion)
 		}
 		project.Networks[name] = network
 	}
@@ -180,6 +183,21 @@ func fixupComposeYaml(yamlStr string, app *DdevApp) (*composeTypes.Project, erro
 		}
 		if _, ok := service.Networks["default"]; !ok {
 			service.Networks["default"] = nil
+		}
+
+		// Add labels to all services
+		service.Labels = service.Labels.
+			Add("com.ddev.site-name", app.GetName()).
+			Add("com.ddev.app-type", app.GetType()).
+			Add("com.ddev.approot", app.GetAppRoot()).
+			Add("com.ddev.version", versionconstants.DdevVersion)
+
+		if service.Build != nil {
+			service.Build.Labels.
+				Add("com.ddev.site-name", app.GetName()).
+				Add("com.ddev.app-type", app.GetType()).
+				Add("com.ddev.approot", app.GetAppRoot()).
+				Add("com.ddev.version", versionconstants.DdevVersion)
 		}
 
 		// Add environment variables from .env files to services

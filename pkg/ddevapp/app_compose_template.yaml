@@ -38,11 +38,6 @@ services:
     hostname: {{ .Name }}-db
     ports:
       - "{{ .DockerIP }}:$DDEV_HOST_DB_PORT:{{ .DBPort }}"
-    labels:
-      com.ddev.site-name: ${DDEV_SITENAME}
-      com.ddev.platform: {{ .Plugin }}
-      com.ddev.app-type: {{ .AppType }}
-      com.ddev.approot: $DDEV_APPROOT
     environment:
       - COLUMNS
       - BITNAMI_VOLUME_DIR={{ .BitnamiVolumeDir }}
@@ -256,11 +251,6 @@ services:
     - START_SCRIPT_TIMEOUT={{ .StartScriptTimeout }}
     {{ range $env := .WebEnvironment }}- "{{ $env }}"
     {{ end }}
-    labels:
-      com.ddev.site-name: ${DDEV_SITENAME}
-      com.ddev.platform: {{ .Plugin }}
-      com.ddev.app-type: {{ .AppType }}
-      com.ddev.approot: $DDEV_APPROOT
 
       {{ if .HostDockerInternalIP }}
     extra_hosts: [ "host.docker.internal:{{ .HostDockerInternalIP }}" ]
@@ -286,9 +276,6 @@ services:
   xhgui:
     image: {{ .XhguiImage }}
     container_name: ddev-${DDEV_SITENAME}-xhgui
-    labels:
-      com.ddev.site-name: ${DDEV_SITENAME}
-      com.ddev.approot: $DDEV_APPROOT
     profiles:
       - xhgui
     restart: "no"
@@ -319,8 +306,6 @@ networks:
     driver_opts:
       com.docker.network.driver.mtu: 1440
     {{ end }}
-    labels:
-      com.ddev.platform: ddev
 
 volumes:
   {{if and (not .OmitDB) (ne .DBType "postgres") }}
