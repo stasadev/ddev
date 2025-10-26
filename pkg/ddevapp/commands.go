@@ -63,5 +63,9 @@ func performTaskInContainer(command []string) (string, string, error) {
 	// If there is no running active site, use an anonymous container instead.
 	containerName := "performTaskInContainer" + nodeps.RandomString(12)
 	uid, _, _ := dockerutil.GetContainerUser()
-	return dockerutil.RunSimpleContainer(dockerImages.GetWebImage(), containerName, command, nil, nil, []string{"ddev-global-cache:/mnt/ddev-global-cache"}, uid, true, false, map[string]string{"com.ddev.site-name": ""}, nil, &dockerutil.NoHealthCheck)
+	labels := map[string]string{"com.ddev.site-name": ""}
+	if dockerutil.IsPodman() && dockerutil.IsRootless() {
+		labels["com.ddev.userns"] = "keep-id"
+	}
+	return dockerutil.RunSimpleContainer(dockerImages.GetWebImage(), containerName, command, nil, nil, []string{"ddev-global-cache:/mnt/ddev-global-cache"}, uid, true, false, labels, nil, &dockerutil.NoHealthCheck)
 }

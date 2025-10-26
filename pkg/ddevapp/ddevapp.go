@@ -1444,6 +1444,7 @@ Fix with 'ddev config global --required-docker-compose-version="" --use-docker-c
 	// Build list of volume mounts and their target paths for chown
 	volumeMounts := []string{"ddev-global-cache:/mnt/ddev-global-cache"}
 	chownCmd := fmt.Sprintf("chown -R %s /mnt/ddev-global-cache", uid)
+	labels := map[string]string{"com.ddev.site-name": ""}
 
 	if !nodeps.ArrayContainsString(app.GetOmittedContainers(), "db") {
 		if app.Database.Type == nodeps.Postgres {
@@ -1452,13 +1453,16 @@ Fix with 'ddev config global --required-docker-compose-version="" --use-docker-c
 			// Chain postgres data dir chown while preserving exit codes from both operations.
 			chownCmd = fmt.Sprintf("%s || rc=$?; chown -R 999:999 %s || rc=$?; exit ${rc:-0};", chownCmd, postgresDataDir)
 		} else {
+			if dockerutil.IsPodman() && dockerutil.IsRootless() {
+				labels["com.ddev.userns"] = "keep-id"
+			}
 			volumeMounts = append(volumeMounts, app.GetMariaDBVolumeName()+":/var/lib/mysql")
 			chownCmd = fmt.Sprintf("%s /var/lib/mysql", chownCmd)
 		}
 	}
 
 	util.Debug("Exec %s", chownCmd)
-	_, out, err := dockerutil.RunSimpleContainer(ddevImages.GetWebImage(), "start-chown-"+util.RandString(6), []string{"sh", "-c", chownCmd}, []string{}, []string{}, volumeMounts, "", true, false, map[string]string{"com.ddev.site-name": ""}, nil, &dockerutil.NoHealthCheck)
+	_, out, err := dockerutil.RunSimpleContainer(ddevImages.GetWebImage(), "start-chown-"+util.RandString(6), []string{"sh", "-c", chownCmd}, []string{}, []string{}, volumeMounts, "", true, false, labels, nil, &dockerutil.NoHealthCheck)
 	if err != nil {
 		return fmt.Errorf("failed to '%s' inside volumes: %v, output=%s", chownCmd, err, out)
 	}

@@ -577,16 +577,14 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 				}
 			}
 		}
-		if IsRootless() {
-			// Podman requires explicit user to set correct file ownership.
-			// Without it, files have incorrect permissions,
-			// causing issues with volume mounts and file access.
-			if config.User == "" {
-				config.User = "0"
-			}
-			// Podman: set the user namespace mode for the container
-			// https://docs.podman.io/en/v4.6.1/markdown/options/userns.container.html#userns-mode
-			hostConfig.UsernsMode = "keep-id"
+		// Podman requires explicit user to set correct file ownership.
+		// Without it, files have incorrect permissions,
+		// causing issues with volume mounts and file access.
+		if config.User == "" {
+			config.User = "0"
+		}
+		if usernsMode, exists := config.Labels["com.ddev.userns"]; exists {
+			hostConfig.UsernsMode = container.UsernsMode(usernsMode)
 		}
 	}
 
