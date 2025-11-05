@@ -226,7 +226,7 @@ func generateRouterCompose(activeApps []*DdevApp) (string, error) {
 		"TraefikMonitorPort":         globalconfig.DdevGlobalConfig.TraefikMonitorPort,
 		"Timezone":                   timezone,
 		"Hostnames":                  determineRouterHostnames(activeApps),
-		"IsPodman":                   dockerutil.IsPodman(),
+		"IsPodmanRootless":           dockerutil.IsPodman() && dockerutil.IsRootless(),
 		"IsRootless":                 dockerutil.IsRootless(),
 	}
 
