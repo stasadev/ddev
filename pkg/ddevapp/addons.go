@@ -326,18 +326,12 @@ func processPHPAction(action string, installDesc InstallDesc, app *DdevApp, verb
 
 	uidStr, _, _ := dockerutil.GetContainerUser()
 
-	labels := map[string]string{"com.ddev.site-name": ""}
-	if dockerutil.IsPodman() && dockerutil.IsRootless() {
-		labels["com.ddev.userns"] = "keep-id"
-	}
-
 	config := &dockerContainer.Config{
 		Image:      image,
 		Cmd:        dockerStrslice.StrSlice(cmd),
 		WorkingDir: "/var/www/html/.ddev",
 		Env:        env,
 		User:       uidStr,
-		Labels:     labels,
 	}
 
 	hostConfig := &dockerContainer.HostConfig{

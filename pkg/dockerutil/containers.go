@@ -581,6 +581,11 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 		}
 	}
 
+	// Empty user means root
+	if config.User == "" {
+		config.User = "0"
+	}
+
 	if IsPodman() {
 		if config.Healthcheck == nil {
 			// Podman doesn't recognize HEALTHCHECK from Dockerfile
@@ -597,18 +602,15 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 				}
 			}
 		}
-		// Podman doesn't support "NONE" keyword
-		if config.Healthcheck != nil && len(config.Healthcheck.Test) > 0 && config.Healthcheck.Test[0] == "NONE" {
-			config.Healthcheck.Test = []string{"CMD-SHELL", "true"}
-		}
-		// Podman requires explicit user to set correct file ownership.
-		// Without it, files have incorrect permissions,
-		// causing issues with volume mounts and file access.
-		if config.User == "" {
-			config.User = "0"
-		}
-		if usernsMode, exists := config.Labels["com.ddev.userns"]; exists {
-			hostConfig.UsernsMode = container.UsernsMode(usernsMode)
+		if config.User == "0" {
+			// For containers that use CopyIntoContainer or run "chown", set UsernsMode,
+			// otherwise file ownership inside the container will be incorrect
+			if usernsMode, exists := config.Labels["com.ddev.userns"]; exists {
+				hostConfig.UsernsMode = container.UsernsMode(usernsMode)
+			}
+		} else {
+			// Always use "keep-id" for non-root users
+			hostConfig.UsernsMode = "keep-id"
 		}
 	}
 
