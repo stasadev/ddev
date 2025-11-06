@@ -102,3 +102,13 @@ func IsRootless() bool {
 	}
 	return false
 }
+
+// IsPodmanRootless detects if Podman is running in rootless mode
+func IsPodmanRootless() bool {
+	return IsRootless() && IsPodman()
+}
+
+// IsDockerRootless detects if Docker is running in rootless mode
+func IsDockerRootless() bool {
+	return IsRootless() && !IsPodman()
+}

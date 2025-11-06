@@ -116,6 +116,12 @@ EOF
   sudo systemctl restart apparmor.service
   # Enable ports below 1024
   sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+  # Allow loopback https://github.com/moby/moby/issues/47684#issuecomment-2166149845
+  mkdir -p ~/.config/systemd/user/docker.service.d
+  cat << 'EOF' > ~/.config/systemd/user/docker.service.d/override.conf
+[Service]
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=false"
+EOF
   # Install rootless docker
   curl -fsSL https://get.docker.com/rootless | sh
   cat /etc/subuid

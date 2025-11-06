@@ -92,6 +92,15 @@ func sanitizeUsername(rawUsername string) string {
 // GetContainerUser returns the uid, gid, and username used to run most containers
 func GetContainerUser() (uidStr string, gidStr string, username string) {
 	sContainerUserOnce.Do(func() {
+		// Handle Docker rootless mode by using root user inside container
+		if IsDockerRootless() {
+			sContainerUser = &containerUser{
+				uidStr:   "0",
+				gidStr:   "0",
+				username: "root",
+			}
+			return
+		}
 		// Default fallback values if we can't determine the user
 		uidStr = "1000"
 		gidStr = "1000"

@@ -97,7 +97,7 @@ func TestSSHAuth(t *testing.T) {
 	}
 	args := []string{"run", "-t", "--rm", "--volumes-from=" + ddevapp.SSHAuthName, "-v", sshKeyPath + ":/home/" + username + "/.ssh", "-u", uidStr}
 	// Add --userns=keep-id for rootless Podman to maintain user namespace mapping
-	if dockerutil.IsPodman() && dockerutil.IsRootless() {
+	if dockerutil.IsPodmanRootless() {
 		args = append(args, "--userns=keep-id")
 	}
 	args = append(args, ddevImages.GetSSHAuthImage()+"-built", "//test.expect.passphrase")

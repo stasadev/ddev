@@ -116,7 +116,7 @@ func CopyIntoVolume(sourcePath string, volumeName string, targetSubdir string, u
 	c = c + "mkdir -p " + targetSubdirFullPath + " && sleep infinity "
 
 	labels := map[string]string{"com.ddev.site-name": ""}
-	if IsPodman() && IsRootless() {
+	if IsPodmanRootless() {
 		labels["com.ddev.userns"] = "keep-id"
 	}
 	containerID, _, err := RunSimpleContainer(ddevImages.GetWebImage(), containerName, []string{"bash", "-c", c}, nil, nil, []string{volumeName + ":" + volPath}, "0", false, true, labels, nil, nil)

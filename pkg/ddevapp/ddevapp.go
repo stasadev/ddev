@@ -1568,7 +1568,7 @@ Fix with 'ddev config global --required-docker-compose-version="" --use-docker-c
 	volumeMounts := []string{"ddev-global-cache:/mnt/ddev-global-cache"}
 	chownCmd := fmt.Sprintf("chown -R %s:%s /mnt/ddev-global-cache", uid, gid)
 	labels := map[string]string{"com.ddev.site-name": ""}
-	if dockerutil.IsPodman() && dockerutil.IsRootless() {
+	if dockerutil.IsPodmanRootless() {
 		labels["com.ddev.userns"] = "keep-id"
 	}
 
@@ -2609,8 +2609,8 @@ func (app *DdevApp) CaptureLogs(service string, timestamps bool, tailLines strin
 func (app *DdevApp) DockerEnv() map[string]string {
 	uidStr, gidStr, username := dockerutil.GetContainerUser()
 
-	// Warn about running as root if we're not on Windows.
-	if uidStr == "0" || gidStr == "0" {
+	// Warn about running as root if not in Docker rootless mode
+	if (uidStr == "0" || gidStr == "0") && !dockerutil.IsDockerRootless() {
 		util.WarningOnce("Warning: containers will run as root. This could be a security risk on Linux.")
 	}
 
