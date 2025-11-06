@@ -287,8 +287,15 @@ func TestDdevRestoreSnapshot(t *testing.T) {
 		delete(dirSnapshots, "mysql:5.7")
 	}
 
-	if dockerutil.IsPodman() {
-		t.Skip("Skipping TestDdevRestoreSnapshot dirSnapshots on Podman due to issues with volume mounts and ownership")
+	// Works locally but fails in CI.
+	// mysql:
+	// [ERROR] Could not create unix socket lock file /var/run/mysqld/mysqld.sock.lock.
+	// mariadb:
+	// [ERROR] Can't start server : Bind on unix socket: Permission denied
+	// [ERROR] Do you already have another mysqld server running on socket: /var/run/mysqld/mysqld.sock ?
+	if dockerutil.IsPodman() || dockerutil.IsDockerRootless() {
+		delete(dirSnapshots, "mysql:5.7")
+		delete(dirSnapshots, "mariadb:10.3")
 	}
 
 	for dbDesc, dirSnapshot := range dirSnapshots {

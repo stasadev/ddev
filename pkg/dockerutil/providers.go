@@ -75,7 +75,7 @@ func IsOrbStack() bool {
 	return false
 }
 
-// IsPodman detects if running on Podman
+// IsPodman detects if running on Podman (either rootless or root)
 func IsPodman() bool {
 	serverVersion, err := GetServerVersion()
 	if err != nil {

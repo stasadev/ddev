@@ -2609,8 +2609,8 @@ func (app *DdevApp) CaptureLogs(service string, timestamps bool, tailLines strin
 func (app *DdevApp) DockerEnv() map[string]string {
 	uidStr, gidStr, username := dockerutil.GetContainerUser()
 
-	// Warn about running as root if not in Docker rootless mode
-	if (uidStr == "0" || gidStr == "0") && !dockerutil.IsDockerRootless() {
+	// Warn about running as root if we're not on Windows.
+	if uidStr == "0" || gidStr == "0" {
 		util.WarningOnce("Warning: containers will run as root. This could be a security risk on Linux.")
 	}
 

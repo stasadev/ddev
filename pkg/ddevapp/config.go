@@ -1401,32 +1401,12 @@ ARG gid
 ARG DDEV_PHP_VERSION
 ARG DDEV_DATABASE
 RUN getent group tty || groupadd tty
-`
-	if dockerutil.IsDockerRootless() {
-		contents = contents + `
-### DDEV-injected Docker rootless user setup
-RUN ln -s /root /home/root && cp -r /etc/skel/. /root/
-`
-	} else {
-		contents = contents + `
 RUN (groupadd --gid "$gid" "$username" || groupadd "$username" || true) && \
     (useradd -G tty -l -m -s "/bin/bash" --gid "$username" --comment '' --uid "$uid" "$username" || \
     useradd -G tty -l -m -s "/bin/bash" --gid "$username" --comment '' "$username" || \
     useradd -G tty -l -m -s "/bin/bash" --gid "$gid" --comment '' "$username" || \
     useradd -G tty -l -m -s "/bin/bash" --comment '' "$username")
 `
-	}
-
-	if strings.Contains(fullpath, "dbimageBuild") {
-		if dockerutil.IsDockerRootless() {
-			if app.Database.Type == nodeps.MySQL || app.Database.Type == nodeps.MariaDB {
-				contents = contents + `
-### DDEV-injected Docker rootless MySQL/MariaDB root user setup
-RUN mkdir -p /etc/mysql/conf.d && printf "[mysqld]\nuser=root\n" > /etc/mysql/conf.d/rootless.cnf
-`
-			}
-		}
-	}
 
 	// If there are user pre.Dockerfile* files, insert their contents
 	if userDockerfilePath != "" {
@@ -1449,34 +1429,13 @@ RUN mkdir -p /etc/mysql/conf.d && printf "[mysqld]\nuser=root\n" > /etc/mysql/co
 		}
 	}
 
+	// If our PHP version is not already provided in the ddev-webserver, add it now
 	if strings.Contains(fullpath, "webimageBuild") {
-		// If our PHP version is not already provided in the ddev-webserver, add it now
 		if _, ok := nodeps.PreinstalledPHPVersions[app.PHPVersion]; !ok {
 			contents = contents + fmt.Sprintf(`
 ### DDEV-injected addition of not-preinstalled PHP version
 RUN /usr/local/bin/install_php_extensions.sh "php%s" "${TARGETARCH}"
 `, app.PHPVersion)
-		}
-		// For Docker rootless we have to build our own Apache2
-		if dockerutil.IsDockerRootless() && app.WebserverType == nodeps.WebserverApacheFPM {
-			contents = contents + fmt.Sprintf(`
-### DDEV-injected Docker rootless Apache build with -DBIG_SECURITY_HOLE to make it run as root
-RUN <<EOF
-set -eu -o pipefail
-cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak
-sed -i '/^Types:/ s/$/ deb-src/' /etc/apt/sources.list.d/debian.sources
-(timeout %d apt-get update || true) && DEBIAN_FRONTEND=noninteractive apt-get build-dep apache2 -y
-mkdir -p /tmp/apache-build && cd /tmp/apache-build
-apt-get source apache2
-cd apache2-*
-export DEB_BUILD_OPTIONS="parallel=$(nproc)"
-export DEB_CFLAGS_APPEND="-DBIG_SECURITY_HOLE"
-dpkg-buildpackage -b
-dpkg -i ../apache2*.deb
-cd /tmp && rm -rf /tmp/apache-build
-mv /etc/apt/sources.list.d/debian.sources.bak /etc/apt/sources.list.d/debian.sources
-EOF
-`, app.GetMaxContainerWaitTime())
 		}
 	}
 

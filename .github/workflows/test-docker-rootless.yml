@@ -32,5 +32,6 @@ jobs:
     secrets: inherit
     with:
       ddev_test_docker_rootless: "true"
+      ddev_test_no_bind_mounts: "true"
       testargs: "" # don't use "-failfast"
       debug_enabled: ${{ inputs.debug_enabled || false }}
