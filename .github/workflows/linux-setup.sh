@@ -31,7 +31,9 @@ if [[ ${DDEV_TEST_PODMAN_ROOTLESS:-} == "true" ]]; then
   brew install podman >/dev/null
   hash -r
   # Enable ports below 1024
-  sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+  sudo mkdir -p /etc/sysctl.d
+  echo 'net.ipv4.ip_unprivileged_port_start=0' | sudo tee -a /etc/sysctl.d/60-rootless.conf
+  sudo sysctl -p /etc/sysctl.d/60-rootless.conf
   # Create systemd unit files
   mkdir -p ~/.config/systemd/user
   # Create podman.socket
@@ -167,7 +169,9 @@ elif [[ "${DDEV_TEST_DOCKER_ROOTLESS:-}" == "true" ]]; then
   sudo systemctl disable --now docker.service docker.socket
   sudo rm -f /var/run/docker.sock
   # Enable ports below 1024
-  sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+  sudo mkdir -p /etc/sysctl.d
+  echo 'net.ipv4.ip_unprivileged_port_start=0' | sudo tee -a /etc/sysctl.d/60-rootless.conf
+  sudo sysctl -p /etc/sysctl.d/60-rootless.conf
   # Configure AppArmor for rootlesskit
   # Source: https://github.com/ScribeMD/rootless-docker/pull/402
   abi4_version="$(find /etc/apparmor.d/abi -maxdepth 1 -name '4.*' -printf '%f\n' | sort -nr | head -1)"
