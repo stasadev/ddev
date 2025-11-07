@@ -188,14 +188,22 @@ func getCertificateForPrivateKey(path string, name string) (string, string) {
 // runSSHAuthContainer runs the SSH auth container using Docker client API
 func runSSHAuthContainer(keys []string) (int, error) {
 	// Container configuration
-	uidStr, _, _ := dockerutil.GetContainerUser()
+	uidStr, gidStr, _ := dockerutil.GetContainerUser()
 	infoMessage := `\033[0;33mAdding key %s\033[0m\n`
 	if output.JSONOutput {
 		infoMessage = `Adding key %s\n`
 	}
+	command := fmt.Sprintf(`cp -r /tmp/sshtmp ~/.ssh && chmod -R go-rwx ~/.ssh && cd ~/.ssh && mapfile -t keys < <(grep -l '^-----BEGIN .* PRIVATE KEY-----' *) && ((${#keys[@]})) || { echo "No SSH private keys found." >&2; exit 1; } && for key in "${keys[@]}"; do printf "%s" "$key" >&2; ssh-add "$key" || exit $?; done`, infoMessage)
+	if dockerutil.IsDockerRootless() {
+		// Use setpriv for ssh-add to run as the original user
+		command = fmt.Sprintf(`cp -r /tmp/sshtmp ~/.ssh && chown -R %[1]s:%[2]s ~/.ssh && chmod -R go-rwx ~/.ssh && cd ~/.ssh && mapfile -t keys < <(grep -l '^-----BEGIN .* PRIVATE KEY-----' *) && ((${#keys[@]})) || { echo "No SSH private keys found." >&2; exit 1; } && for key in "${keys[@]}"; do printf "%[3]s" "$key" >&2; setpriv --reuid=%[1]s --regid=%[2]s --init-groups -- ssh-add "$key" || exit $?; done`, uidStr, gidStr, infoMessage)
+		// Run as root because /tmp/sshtmp is owned by root in Docker rootless
+		uidStr = "0"
+	}
+
 	config := &dockerContainer.Config{
 		Image:       docker.GetSSHAuthImage() + "-built",
-		Cmd:         dockerStrslice.StrSlice{"bash", "-c", fmt.Sprintf(`cp -r /tmp/sshtmp ~/.ssh && chmod -R go-rwx ~/.ssh && cd ~/.ssh && mapfile -t keys < <(grep -l '^-----BEGIN .* PRIVATE KEY-----' *) && ((${#keys[@]})) || { echo "No SSH private keys found." >&2; exit 1; } && for key in "${keys[@]}"; do printf "%s" "$key" >&2; ssh-add "$key" || exit $?; done`, infoMessage)},
+		Cmd:         dockerStrslice.StrSlice{"bash", "-c", command},
 		Entrypoint:  dockerStrslice.StrSlice{},
 		AttachStdin: true,
 		User:        uidStr,

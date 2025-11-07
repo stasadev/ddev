@@ -1,6 +1,7 @@
 package ddevapp_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,19 +89,26 @@ func TestSSHAuth(t *testing.T) {
 
 	// Add password/key to auth. This is an unfortunate perversion of using docker run directly, copied from
 	// ddev auth ssh command, and with an expect script to provide the passphrase.
-	uidStr, _, username := dockerutil.GetContainerUser()
+	uidStr, gidStr, username := dockerutil.GetContainerUser()
 	sshKeyPath := app.GetConfigPath(".ssh")
 
 	containerCmd := "docker"
-	if dockerutil.IsPodman() {
+	if dockerutil.IsPodmanRootless() {
 		containerCmd = "podman"
 	}
-	args := []string{"run", "-t", "--rm", "--volumes-from=" + ddevapp.SSHAuthName, "-v", sshKeyPath + ":/home/" + username + "/.ssh", "-u", uidStr}
+	args := []string{"run", "-t", "--rm", "--volumes-from=" + ddevapp.SSHAuthName, "-v", sshKeyPath + ":/home/" + username + "/.ssh"}
 	// Add --userns=keep-id for rootless Podman to maintain user namespace mapping
 	if dockerutil.IsPodmanRootless() {
 		args = append(args, "--userns=keep-id")
 	}
-	args = append(args, ddevImages.GetSSHAuthImage()+"-built", "//test.expect.passphrase")
+	if dockerutil.IsDockerRootless() {
+		// Docker rootless needs to run as root to be able to change ownership of files
+		args = append(args, "-u", "0")
+		args = append(args, "--entrypoint", "sh", ddevImages.GetSSHAuthImage()+"-built", "-c", fmt.Sprintf("chown -R %[1]s:%[2]s /home/%[3]s/.ssh && setpriv --reuid=%[1]s --regid=%[2]s --init-groups -- //test.expect.passphrase && chown -R 0:0 /home/%[3]s/.ssh", uidStr, gidStr, username))
+	} else {
+		args = append(args, "-u", uidStr)
+		args = append(args, ddevImages.GetSSHAuthImage()+"-built", "//test.expect.passphrase")
+	}
 
 	err = exec.RunInteractiveCommand(containerCmd, args)
 	require.NoError(t, err)
