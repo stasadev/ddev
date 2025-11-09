@@ -185,28 +185,56 @@ func getCertificateForPrivateKey(path string, name string) (string, string) {
 	return certPath, certName
 }
 
+// GetAuthSSHCmd returns the command to run inside the SSH auth container
+func GetAuthSSHCmd(command string) string {
+	uid, gid, username := dockerutil.GetContainerUser()
+
+	commandToRun := command
+	if dockerutil.IsDockerRootless() {
+		// Run command as container user, not root
+		commandToRun = fmt.Sprintf("setpriv --reuid=%s --regid=%s --init-groups -- %s", uid, gid, command)
+	}
+
+	if command == "ssh-add" {
+		infoMessage := `\033[0;33mAdding key %s\033[0m\n`
+		if output.JSONOutput {
+			infoMessage = `Adding key %s\n`
+		}
+		commandToRun = fmt.Sprintf(`
+# Add each key to ssh-agent
+for key in "${keys[@]}"; do \
+  printf "%[1]s" "$key" >&2; \
+  %[2]s "$key" || exit $?; \
+done`, infoMessage, commandToRun)
+	}
+
+	return fmt.Sprintf(`
+# Copy SSH files and set proper ownership and permissions
+cp -r /tmp/sshtmp /home/%[1]s/.ssh && \
+chown -R %[2]s:%[3]s /home/%[1]s/.ssh && \
+chmod -R go-rwx /home/%[1]s/.ssh && \
+cd /home/%[1]s/.ssh && \
+# Find all private key files
+mapfile -t keys < <(grep -l '^-----BEGIN .* PRIVATE KEY-----' *) && \
+# Verify at least one key exists
+((${#keys[@]})) || { echo "No SSH private keys found." >&2; exit 1; } && \
+%[4]s`, username, uid, gid, commandToRun)
+}
+
 // runSSHAuthContainer runs the SSH auth container using Docker client API
 func runSSHAuthContainer(keys []string) (int, error) {
-	// Container configuration
-	uidStr, gidStr, _ := dockerutil.GetContainerUser()
-	infoMessage := `\033[0;33mAdding key %s\033[0m\n`
-	if output.JSONOutput {
-		infoMessage = `Adding key %s\n`
-	}
-	command := fmt.Sprintf(`cp -r /tmp/sshtmp ~/.ssh && chmod -R go-rwx ~/.ssh && cd ~/.ssh && mapfile -t keys < <(grep -l '^-----BEGIN .* PRIVATE KEY-----' *) && ((${#keys[@]})) || { echo "No SSH private keys found." >&2; exit 1; } && for key in "${keys[@]}"; do printf "%s" "$key" >&2; ssh-add "$key" || exit $?; done`, infoMessage)
+	uid, _, _ := dockerutil.GetContainerUser()
+	// Run container as root to be able to change ownership of files
 	if dockerutil.IsDockerRootless() {
-		// Use setpriv for ssh-add to run as the original user
-		command = fmt.Sprintf(`cp -r /tmp/sshtmp ~/.ssh && chown -R %[1]s:%[2]s ~/.ssh && chmod -R go-rwx ~/.ssh && cd ~/.ssh && mapfile -t keys < <(grep -l '^-----BEGIN .* PRIVATE KEY-----' *) && ((${#keys[@]})) || { echo "No SSH private keys found." >&2; exit 1; } && for key in "${keys[@]}"; do printf "%[3]s" "$key" >&2; setpriv --reuid=%[1]s --regid=%[2]s --init-groups -- ssh-add "$key" || exit $?; done`, uidStr, gidStr, infoMessage)
-		// Run as root because /tmp/sshtmp is owned by root in Docker rootless
-		uidStr = "0"
+		uid = "0"
 	}
 
 	config := &dockerContainer.Config{
 		Image:       docker.GetSSHAuthImage() + "-built",
-		Cmd:         dockerStrslice.StrSlice{"bash", "-c", command},
+		Cmd:         dockerStrslice.StrSlice{"bash", "-c", GetAuthSSHCmd("ssh-add")},
 		Entrypoint:  dockerStrslice.StrSlice{},
 		AttachStdin: true,
-		User:        uidStr,
+		User:        uid,
 	}
 
 	// Prepare mounts for Docker API
