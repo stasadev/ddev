@@ -28,7 +28,6 @@ env:
   DDEV_DEBUG: true
   HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
 permissions:
   contents: read
 
@@ -129,3 +128,17 @@ jobs:
         with:
           name: ddev-windows-arm64-installer
           path: .gotmp/bin/windows_arm64/ddev_windows_arm64_installer.exe
+
+      - name: Add download link to PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pr-artifacts-comment.yml',
+              ref: context.ref,
+              inputs: {
+                pr_number: context.payload.pull_request.number.toString(),
+              },
+            });
