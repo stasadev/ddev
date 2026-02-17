@@ -1,0 +1,171 @@
+name: Test WSL2 (Docker CE)
+
+on:
+  pull_request:
+    paths:
+      - "go.*"
+      - "pkg/**"
+      - "cmd/**"
+      - "Makefile"
+      - "vendor/**"
+      - ".github/workflows/**"
+      - "!.github/workflows/docs**"
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: 'Run the build with tmate set "debug_enabled"'
+        type: boolean
+        required: false
+        default: false
+      testargs:
+        description: 'TESTARGS value'
+        type: string
+        required: false
+        default: '-failfast'
+      gotest_short:
+        description: 'GOTEST_SHORT value (16=drupal11 only)'
+        type: string
+        required: false
+        default: '16'
+      ddev_embargo_tests:
+        description: 'Pipe-separated list of test names to skip (e.g., TestName1|TestName2)'
+        type: string
+        required: false
+        default: ''
+      make_target:
+        description: 'Make target to run'
+        type: string
+        required: false
+        default: 'test'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOTEST_SHORT: ${{ inputs.gotest_short || '16' }}
+  TESTARGS: ${{ inputs.testargs || '-failfast' }}
+  MAKE_TARGET: ${{ inputs.make_target || 'test' }}
+  DDEV_EMBARGO_TESTS: ${{ inputs.ddev_embargo_tests || vars.DDEV_EMBARGO_TESTS || '' }}
+  DDEV_SKIP_NODEJS_TEST: 'true'
+  # For pull_request events, clone from the fork's repo and use the PR source branch.
+  # For push/workflow_dispatch, clone from the current repo and use ref_name.
+  GITHUB_CLONE_URL: ${{ github.event.pull_request.head.repo.clone_url || format('https://github.com/{0}', github.repository) }}
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+jobs:
+  test-wsl2:
+    runs-on: windows-2025
+    timeout-minutes: 240
+
+    strategy:
+      fail-fast: false
+      matrix:
+#        mirrored doesn't work (yet?) on Windows server 2025.  https://github.com/microsoft/WSL/issues/11154
+#        networking: [nat, mirrored]
+        networking: [nat]
+
+    name: WSL2 (${{ matrix.networking }})
+
+    steps:
+      # Can't work yet until enabled in Windows Server 2025
+      - name: Configure mirrored networking
+        if: matrix.networking == 'mirrored'
+        shell: pwsh
+        run: |
+          $wslconfig = @"
+          [wsl2]
+          networkingMode=mirrored
+
+          [experimental]
+          hostAddressLoopback=true
+          "@
+          Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value $wslconfig
+          Write-Host "Created .wslconfig with mirrored networking:"
+          Get-Content "$env:USERPROFILE\.wslconfig"
+          wsl --shutdown
+
+      - name: Install WSL2 distribution
+        shell: pwsh
+        run: |
+          Write-Host "Setting WSL default version to 2"
+          wsl --set-default-version 2
+          Write-Host "Installing DDEV Ubuntu distro"
+          wsl --install --name DDEV --no-launch
+          # Create testuser, enable systemd, set default user
+          wsl -d DDEV --user root bash -c "useradd -m -s /bin/bash testuser && echo 'testuser:password' | chpasswd && usermod -aG sudo testuser && printf '[boot]\nsystemd=true\n\n[user]\ndefault=testuser\n' > /etc/wsl.conf"
+          wsl --set-default DDEV
+          Write-Host "Verifying WSL installation"
+          wsl --list --verbose
+
+      - name: Restart WSL to enable systemd
+        shell: pwsh
+        run: |
+          Write-Host "Shutting down WSL so systemd and default user take effect"
+          wsl --shutdown
+          Start-Sleep -Seconds 5
+          Write-Host "Verifying WSL comes back with correct user"
+          $user = (wsl whoami).Trim()
+          Write-Host "Current WSL user: $user"
+          if ($user -ne "testuser") {
+            Write-Error "Expected testuser but got $user"
+            exit 1
+          }
+          wsl -- uname -a
+          wsl -- systemctl is-system-running --wait
+
+      - name: Show test configuration
+        shell: pwsh
+        run: |
+          Write-Host "=== Test Configuration ==="
+          Write-Host "Networking mode: ${{ matrix.networking }}"
+          Write-Host "GOTEST_SHORT: ${{ env.GOTEST_SHORT }}"
+          Write-Host "TESTARGS: ${{ env.TESTARGS }}"
+          Write-Host "MAKE_TARGET: ${{ env.MAKE_TARGET }}"
+          Write-Host ""
+          Write-Host "=== Windows Host ==="
+          Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
+          Write-Host "OS: $((Get-CimInstance Win32_OperatingSystem).Caption)"
+          Write-Host "Runner: ${{ runner.os }} / ${{ runner.arch }}"
+          Write-Host "Networking: ${{ matrix.networking }}"
+          Write-Host ""
+          Write-Host "=== WSL Distro ==="
+          wsl --version
+          wsl -- bash -c 'echo "Architecture: $(uname -m)" && echo "Kernel: $(uname -r)" && echo "Distro: $(. /etc/os-release && echo $PRETTY_NAME)" && echo "User: $(whoami)"'
+
+      - name: Clone repo and run setup inside WSL2
+        shell: pwsh
+        run: |
+          $repoUrl = "${{ env.GITHUB_CLONE_URL }}"
+          $branchName = "${{ env.BRANCH_NAME }}"
+          # Shallow clone inside WSL2 as root just to get the setup scripts
+          wsl -u root -- bash -exc "git clone --depth=1 --single-branch --branch '$branchName' '$repoUrl' /tmp/ddev-ci && cd /tmp/ddev-ci && bash -e .github/workflows/wsl2-setup.sh"
+
+      - name: Clone repository for testuser
+        shell: pwsh
+        run: |
+          $repoUrl = "${{ env.GITHUB_CLONE_URL }}"
+          $branchName = "${{ env.BRANCH_NAME }}"
+          # Full clone with tags so git describe works for version info
+          wsl -u testuser -- bash -exc "mkdir -p ~/workspace && cd ~/workspace && git clone --single-branch --branch '$branchName' '$repoUrl' ddev && cd ddev && git fetch --tags && echo 'Checked out:' && git log -1 --oneline && git describe --tags --always"
+
+      - name: Setup tmate session
+        if: ${{ inputs.debug_enabled }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+
+      - name: Run DDEV tests
+        shell: pwsh
+        run: |
+          $gotest_short = "${{ env.GOTEST_SHORT }}"
+          $testargs = "${{ env.TESTARGS }}"
+          $make_target = "${{ env.MAKE_TARGET }}"
+          $embargo = "${{ env.DDEV_EMBARGO_TESTS }}"
+          $skip_nodejs = "${{ env.DDEV_SKIP_NODEJS_TEST }}"
+          wsl -u testuser -- bash -exc "export GOTEST_SHORT='$gotest_short' TESTARGS='$testargs' MAKE_TARGET='$make_target' DDEV_EMBARGO_TESTS='$embargo' DDEV_SKIP_NODEJS_TEST='$skip_nodejs' && cd ~/workspace/ddev && bash -e .github/workflows/wsl2-test.sh"
