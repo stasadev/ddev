@@ -21,6 +21,7 @@ import (
 type DockerVersionMatrix struct {
 	APIVersion               string
 	Version                  string
+	BuildxVersion            string
 	PodmanVersion            string
 	ComposeVersionConstraint string
 }
@@ -41,6 +42,7 @@ type DockerVersionMatrix struct {
 var DockerRequirements = DockerVersionMatrix{
 	APIVersion:               "1.44",
 	Version:                  "25.0",
+	BuildxVersion:            "0.17.0",
 	PodmanVersion:            "5.0",
 	ComposeVersionConstraint: ">= 2.24.3",
 }
@@ -154,6 +156,47 @@ func CheckAvailableSpace() {
 	if spaceAbsolute < nodeps.MinimumDockerSpaceWarning {
 		util.Error("Your Docker install has only %d available disk space, less than %d warning level (%d%% used). Please increase disk image size. More info at %s", spaceAbsolute, nodeps.MinimumDockerSpaceWarning, spacePercent, "https://docs.ddev.com/en/stable/users/usage/troubleshooting/#out-of-disk-space")
 	}
+}
+
+// GetBuildxVersion returns the version of the Docker buildx plugin.
+func GetBuildxVersion() (string, error) {
+	plugin, err := GetCLIPlugin("buildx")
+	if err != nil {
+		return "", err
+	}
+	// Strip leading "v" prefix if present for semver compatibility
+	return strings.TrimPrefix(plugin.Version, "v"), nil
+}
+
+// GetBuildxLocation returns the path to the Docker buildx plugin.
+func GetBuildxLocation() (string, error) {
+	plugin, err := GetCLIPlugin("buildx")
+	if err != nil {
+		return "", err
+	}
+	return plugin.Path, nil
+}
+
+// CheckDockerBuildxVersion checks that the Docker buildx plugin is installed
+// and meets the minimum version requirement.
+func CheckDockerBuildxVersion(dockerVersionMatrix DockerVersionMatrix) error {
+	defer util.TimeTrack()()
+
+	v, err := GetBuildxVersion()
+	if err != nil {
+		return fmt.Errorf("compose build requires buildx %s or later: %v.\nPlease install buildx: https://github.com/docker/buildx#installing", dockerVersionMatrix.BuildxVersion, err)
+	}
+
+	pluginPath, err := GetBuildxLocation()
+	if err != nil {
+		pluginPath = "unknown"
+	}
+
+	if versions.LessThan(v, dockerVersionMatrix.BuildxVersion) {
+		return fmt.Errorf("compose build requires buildx %s or later.\nInstalled docker buildx: %s (plugin path: %s)\nPlease update buildx: https://github.com/docker/buildx#installing", dockerVersionMatrix.BuildxVersion, v, pluginPath)
+	}
+
+	return nil
 }
 
 // CheckDockerAuth checks if Docker authentication is properly configured

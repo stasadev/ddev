@@ -28,6 +28,45 @@ func TestCheckCompose(t *testing.T) {
 	}
 }
 
+// TestGetCLIPlugins tests that Docker CLI plugins can be discovered.
+func TestGetCLIPlugins(t *testing.T) {
+	plugins, err := dockerutil.GetCLIPlugins()
+	require.NoError(t, err)
+	require.NotEmpty(t, plugins, "expected at least one CLI plugin to be installed")
+
+	// buildx should be among the discovered plugins
+	found := false
+	for _, p := range plugins {
+		if p.Name == "buildx" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected 'buildx' to be among discovered CLI plugins")
+}
+
+// TestGetBuildxVersion tests that the buildx version can be retrieved.
+func TestGetBuildxVersion(t *testing.T) {
+	v, err := dockerutil.GetBuildxVersion()
+	require.NoError(t, err)
+	require.NotEmpty(t, v, "expected non-empty buildx version")
+	// Version should not have a v prefix (we strip it)
+	require.NotEqual(t, "v", string(v[0]), "expected version without 'v' prefix, got %q", v)
+}
+
+// TestGetBuildxLocation tests that the buildx plugin path can be retrieved.
+func TestGetBuildxLocation(t *testing.T) {
+	pluginPath, err := dockerutil.GetBuildxLocation()
+	require.NoError(t, err)
+	require.NotEmpty(t, pluginPath, "expected non-empty buildx plugin path")
+}
+
+// TestCheckBuildx tests that CheckDockerBuildxVersion passes on a host with buildx installed.
+func TestCheckBuildx(t *testing.T) {
+	err := dockerutil.CheckDockerBuildxVersion(dockerutil.DockerRequirements)
+	require.NoError(t, err)
+}
+
 // TestCheckDockerAuth tests the CheckDockerAuth function
 func TestCheckDockerAuth(t *testing.T) {
 	tmpHome := t.TempDir()
