@@ -1220,13 +1220,15 @@ stopasgroup=true
 	if app.Database.Type == nodeps.MariaDB {
 		// Some MariaDB versions may have their own client in the ddev-webserver
 		// Search for CHANGE_MARIADB_CLIENT to update related code
-		if slices.Contains([]string{nodeps.MariaDB1011, nodeps.MariaDB114}, app.Database.Version) {
+		if app.Database.Version != nodeps.MariaDBDefaultVersion {
 			extraWebContent = extraWebContent + "\nRUN log-stderr.sh mariadb-client-install.sh || true\n"
 		}
 	}
 	// MariaDB uses mariadb-* command names, but legacy mysql* commands are commonly used
 	// Install compatibility wrappers for MariaDB, remove them when not needed
 	extraWebContent = extraWebContent + "\nRUN log-stderr.sh mariadb-compat-install.sh || true\n"
+	// MariaDB 11.4+ has enabled SSL verification by default, which can cause issues.
+	extraWebContent = extraWebContent + "\nRUN log-stderr.sh mariadb-skip-ssl-wrapper-install.sh || true\n"
 
 	err = WriteBuildDockerfile(app, app.GetConfigPath(".webimageBuild/Dockerfile"), app.GetConfigPath("web-build"), app.WebImageExtraPackages, app.ComposerVersion, extraWebContent)
 	if err != nil {
