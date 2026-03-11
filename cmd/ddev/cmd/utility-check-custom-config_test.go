@@ -164,6 +164,6 @@ func TestUtilityCheckCustomConfigCmd(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, out, "Custom configuration detected in project '"+projectName+"':")
 		require.Contains(t, out, "docker-compose.phpmyadmin.yaml")
-		require.Contains(t, out, "(#ddev-generated)")
+		require.Contains(t, out, "(addon ddev-phpmyadmin)")
 	})
 }

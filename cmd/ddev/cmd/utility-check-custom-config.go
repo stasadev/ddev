@@ -15,8 +15,8 @@ var UtilityCheckCustomConfig = &cobra.Command{
 By default, shows only files that would warn on startup (user-created files
 without a #ddev-generated or #ddev-silent-no-warn marker).
 
-Use --all to also show add-on files (marked #ddev-generated) and silenced
-files (marked #ddev-silent-no-warn).`,
+Use --all to also show add-on files (labeled "addon <name>") and silenced
+files (labeled #ddev-silent-no-warn).`,
 	Run: func(cmd *cobra.Command, _ []string) {
 		app, err := ddevapp.GetActiveApp("")
 		if err != nil {
@@ -29,6 +29,6 @@ files (marked #ddev-silent-no-warn).`,
 }
 
 func init() {
-	UtilityCheckCustomConfig.Flags().Bool("all", false, "Include add-on files (#ddev-generated) and silenced files (#ddev-silent-no-warn)")
+	UtilityCheckCustomConfig.Flags().Bool("all", false, `Include add-on files (labeled "addon <name>") and silenced files (#ddev-silent-no-warn)`)
 	DebugCmd.AddCommand(UtilityCheckCustomConfig)
 }

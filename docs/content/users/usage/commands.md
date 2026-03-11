@@ -1484,9 +1484,9 @@ Display custom configuration files in the current project's `.ddev` directory.
 
 By default, shows only files that would warn on startup (user-created files without a `#ddev-generated` or `#ddev-silent-no-warn` marker). Use `--all` to also show add-on files and silenced files.
 
-When `--all` is used, files are marked with:
+When `--all` is used, files are annotated with:
 
-* `(#ddev-generated)` for files from add-ons
+* `(addon <name>)` for files from a named add-on
 * `(#ddev-silent-no-warn)` for silenced files
 
 ```shell
