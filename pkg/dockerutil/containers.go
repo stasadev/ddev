@@ -2,6 +2,7 @@ package dockerutil
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -592,12 +593,19 @@ func RunSimpleContainer(image string, name string, cmd []string, entrypoint []st
 		Binds:        binds,
 		PortBindings: portBindings,
 	}
-	return RunSimpleContainerExtended(name, config, hostConfig, removeContainerAfterRun, detach)
+	// timeout=0 means detach (don't wait for container to finish).
+	// 30 minutes is generous for any simple container task (e.g. chown, rm).
+	var timeout time.Duration
+	if !detach {
+		timeout = 30 * time.Minute
+	}
+	return RunSimpleContainerExtended(name, config, hostConfig, removeContainerAfterRun, timeout)
 }
 
-// RunSimpleContainerExtended runs a container (non-daemonized) and captures the stdout/stderr.
+// RunSimpleContainerExtended runs a container and captures the stdout/stderr.
 // Accepts any config and hostConfig. If stdin is provided, enables interactive mode with stdin forwarding.
-func RunSimpleContainerExtended(name string, config *container.Config, hostConfig *container.HostConfig, removeContainerAfterRun bool, detach bool) (containerID string, out string, returnErr error) {
+// timeout controls how long to wait for the container to finish; 0 means detach (don't wait).
+func RunSimpleContainerExtended(name string, config *container.Config, hostConfig *container.HostConfig, removeContainerAfterRun bool, timeout time.Duration) (containerID string, out string, returnErr error) {
 	ctx, apiClient, err := GetDockerClient()
 	if err != nil {
 		return "", "", err
@@ -760,13 +768,35 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 
 	exitCode := 0
 
-	if !detach {
-		waitResult := apiClient.ContainerWait(ctx, c.ID, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
-		select {
-		case status := <-waitResult.Result:
-			exitCode = int(status.StatusCode)
-		case err := <-waitResult.Error:
-			return c.ID, "", fmt.Errorf("failed to ContainerWait: %v", err)
+	if timeout > 0 {
+		// Poll container state instead of using the streaming ContainerWait API,
+		// which hangs indefinitely on proxied Docker sockets (e.g. Colima).
+		// Use a context deadline so in-flight ContainerInspect calls are also
+		// canceled when the timeout expires, not just the select case.
+		waitCtx, waitCancel := context.WithTimeout(ctx, timeout)
+		defer waitCancel()
+		tickChan := time.NewTicker(500 * time.Millisecond)
+		defer tickChan.Stop()
+		for {
+			info, err := apiClient.ContainerInspect(waitCtx, c.ID, client.ContainerInspectOptions{})
+			if err != nil {
+				if waitCtx.Err() != nil {
+					return c.ID, "", fmt.Errorf("timed out after %s waiting for container %s to stop", timeout, c.ID)
+				}
+				return c.ID, "", fmt.Errorf("failed to inspect container: %v", err)
+			}
+			if info.Container.State == nil {
+				return c.ID, "", fmt.Errorf("container %s has nil state", c.ID)
+			}
+			if !info.Container.State.Running {
+				exitCode = info.Container.State.ExitCode
+				break
+			}
+			select {
+			case <-waitCtx.Done():
+				return c.ID, "", fmt.Errorf("timed out after %s waiting for container %s to stop", timeout, c.ID)
+			case <-tickChan.C:
+			}
 		}
 
 		// For interactive containers, wait for I/O forwarding to complete
