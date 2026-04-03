@@ -1483,6 +1483,27 @@ ddev utility cd
 ddevcd some-project
 ```
 
+### `utility check-custom-config`
+
+Display custom configuration files in the current project's `.ddev` directory.
+
+By default, shows only files that would warn on startup: user-created files and files with an unexpected `#ddev-generated` marker. Recognized add-on files and files with a `#ddev-silent-no-warn` marker are excluded.
+
+Flags:
+
+* `--all`: Show all custom configuration, annotating files with:
+    * `(add-on <name>)` for files installed by a named add-on
+    * `(#ddev-generated)` for add-on files that also carry a `#ddev-generated` marker
+    * `(unexpected #ddev-generated)` for files with a `#ddev-generated` marker not recognized as a DDEV or add-on file
+    * `(#ddev-silent-no-warn)` for files silenced with a `#ddev-silent-no-warn` marker
+
+```shell
+# Show only files that would warn on startup
+ddev utility check-custom-config
+# Show all files including add-on, unexpected #ddev-generated, and silenced files
+ddev utility check-custom-config --all
+```
+
 ### `utility check-db-match`
 
 Verify that the database in the db server matches the configured [type and version](../extend/database-types.md).
