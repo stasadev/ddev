@@ -2005,6 +2005,123 @@ Visit [OpenMage Docs](https://docs.openmage.org) for more installation details.
         ./setup-openmage-git.sh
         ```
 
+## October CMS
+
+Start a new [October CMS](https://octobercms.com) project or configure an existing one.
+
+October CMS is built on Laravel, so it uses the `laravel` project type. DDEV automatically updates or creates the `.env` file with the database information.
+
+=== "New projects"
+
+    Create the project directory and configure DDEV:
+
+    ```bash
+    mkdir -p my-october-site && cd my-october-site
+    ddev config --project-type=laravel --webserver-type=apache-fpm
+    ```
+
+    Start DDEV (this may take a minute):
+
+    ```bash
+    ddev start
+    ```
+
+    Install October CMS via Composer:
+
+    ```bash
+    ddev composer create-project october/october
+    ```
+
+    Run the installer:
+
+    ```bash
+    ddev artisan october:install --no-interaction
+    ```
+
+    Launch the site:
+
+    ```bash
+    ddev launch
+    ```
+
+    ??? tip "Prefer to run as a script?"
+        To run the whole setup as a script, examine and run this script:
+
+        ```bash
+        cat > setup-october.sh << 'EOF'
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p my-october-site && cd my-october-site
+        ddev config --project-type=laravel --webserver-type=apache-fpm
+        ddev start -y
+        ddev composer create-project october/october
+        ddev artisan october:install --no-interaction
+        ddev launch
+        EOF
+        chmod +x setup-october.sh
+        ./setup-october.sh
+        ```
+
+=== "Existing projects"
+
+    You can start using DDEV with an existing October CMS project too — but make sure you have a database backup handy!
+
+    Clone the repository (or navigate to a local project directory):
+
+    ```bash
+    git clone <my-october-repo> my-october-site
+    cd my-october-site
+    ```
+
+    Configure DDEV:
+
+    ```bash
+    ddev config --project-type=laravel --webserver-type=apache-fpm
+    ```
+
+    Start DDEV and install dependencies:
+
+    ```bash
+    ddev start
+    ddev composer install
+    ```
+
+    Import your database and run migrations:
+
+    ```bash
+    ddev import-db --file=/path/to/db.sql.gz
+    ddev artisan october:migrate
+    ```
+
+    Launch the site:
+
+    ```bash
+    ddev launch
+    ```
+
+    ??? tip "Prefer to run as a script?"
+        To run the whole setup as a script, examine and run this script:
+
+        ```bash
+        cat > setup-october-existing.sh << 'EOF'
+        #!/usr/bin/env bash
+        set -euo pipefail
+        git clone <my-october-repo> my-october-site
+        cd my-october-site
+        ddev config --project-type=laravel --webserver-type=apache-fpm
+        ddev start -y
+        ddev composer install
+        ddev import-db --file=/path/to/db.sql.gz
+        ddev artisan october:migrate
+        ddev launch
+        EOF
+        chmod +x setup-october-existing.sh
+        ./setup-october-existing.sh
+        ```
+
+!!!tip "Installing October CMS"
+    Read more about installing October CMS in the [official documentation](https://docs.octobercms.com/3.x/setup/installation.html).
+
 ## Pimcore
 
 === "Composer"
