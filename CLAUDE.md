@@ -40,9 +40,9 @@ make quickstart-test                          # Run Bats docs tests
 
 ### Linting and Code Quality
 
-**IMPORTANT: Always run `make staticrequired` to validate changes, never use `go build` or individual linters directly.**
+**IMPORTANT: Always run `make staticrequired` before committing. A PreToolUse hook in `.claude/settings.json` runs it automatically before every `git commit` — do not bypass it.**
 
-Individual linters (`gofmt`, `markdownlint`) are implemented as PreToolUse and PostToolUse hooks, so should not be separately required:
+`gofmt` and `markdownlint --fix` run automatically via PostToolUse hooks after editing Go or Markdown files. Run them manually if needed:
 
 ```bash
 make staticrequired                           # Run all required static analysis
@@ -119,6 +119,15 @@ Example: `20250108_rfay_fix_networking`
 
 ```bash
 git fetch upstream && git checkout -b <branch_name> upstream/main --no-track
+```
+
+### Comparing Against Upstream
+
+When generating diffs or comparing branches for a PR, prefer `upstream/main` as the base if an `upstream` remote exists. Local `main` may be out of date. If there is no `upstream` remote, fall back to `origin/main`.
+
+```bash
+git fetch upstream 2>/dev/null || git fetch origin
+git diff upstream/main...HEAD 2>/dev/null || git diff origin/main...HEAD
 ```
 
 ### Commit Message Format
