@@ -12,6 +12,7 @@ import (
 
 	"github.com/ddev/ddev/pkg/ddevapp"
 	"github.com/ddev/ddev/pkg/dockerutil"
+	"github.com/ddev/ddev/pkg/environment"
 	"github.com/ddev/ddev/pkg/globalconfig"
 	"github.com/ddev/ddev/pkg/nodeps"
 	"github.com/ddev/ddev/pkg/output"
@@ -327,7 +328,8 @@ func testWSL2NATConnection(app *ddevapp.DdevApp) bool {
 	// PowerShell script to create a simple TCP listener on Windows port 9003
 	// This simulates what an IDE would do - listen for incoming Xdebug connections
 	psScript := `
-$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 9003)
+$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::IPv6Any, 9003)
+$listener.Server.DualMode = $true
 try {
     $listener.Start()
 } catch {
@@ -525,7 +527,8 @@ func testSimpleConnectionQuiet(app *ddevapp.DdevApp) bool {
 // Returns true if connection failed, false if successful
 func testWSL2NATConnectionQuiet(app *ddevapp.DdevApp) bool {
 	psScript := `
-$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 9003)
+$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::IPv6Any, 9003)
+$listener.Server.DualMode = $true
 try { $listener.Start() } catch { Write-Output "INUSE"; exit 0 }
 Write-Output "LISTENING"
 $listener.Server.ReceiveTimeout = 10000
@@ -626,7 +629,7 @@ func runInteractiveXdebugDiagnose() int {
 
 	// Check xdebug_ide_location early - it being set is usually wrong (except WSL2 + VS Code)
 	xdebugIDELocation := globalconfig.DdevGlobalConfig.XdebugIDELocation
-	isWSL2Env := envType == "wsl2-nat" || envType == "wsl2-mirrored"
+	isWSL2Env := environment.IsWSL2Environment(envType)
 	if xdebugIDELocation != "" && !(isWSL2Env && xdebugIDELocation == "wsl2") {
 		output.UserOut.Printf("✗ xdebug_ide_location is set to '%s' (almost always should be empty)\n", xdebugIDELocation)
 		if util.Confirm("Clear it and restart project?") {
@@ -647,20 +650,31 @@ func runInteractiveXdebugDiagnose() int {
 	// Step 2: Connectivity test
 	output.UserOut.Println("[2/5] Connectivity Test")
 
-	// Check if port 9003 is in use from the container's perspective
-	portInUse, _ := testContainerToHostConnectivity(app, "host.docker.internal", 9003)
-	if portInUse {
-		output.UserOut.Println("Port 9003 is in use - stop your IDE listener temporarily for this test.")
-		if !util.Confirm("Press Enter when ready") {
+	var connectivityOK bool
+	if envType == environment.DDEVEnvironmentWSL2None {
+		// networking=none disables the WSL2/Windows network bridge entirely;
+		// a Windows-side IDE is unreachable regardless of firewall settings.
+		// Skip the connectivity test here and rely on the protocol test in Step 5
+		// once the user has chosen a WSL2-local IDE in Step 3.
+		output.UserOut.Println("  ⚠ WSL2 networking=none: host connectivity to Windows is not possible.")
+		output.UserOut.Println("    Skipping connectivity test; your IDE must run inside WSL2.")
+		connectivityOK = true
+	} else {
+		// Check if port 9003 is in use from the container's perspective
+		portInUse, _ := testContainerToHostConnectivity(app, "host.docker.internal", 9003)
+		if portInUse {
+			output.UserOut.Println("Port 9003 is in use - stop your IDE listener temporarily for this test.")
+			if !util.Confirm("Press Enter when ready") {
+				return 1
+			}
+		}
+
+		connectivityOK = runConnectivityTest(app, envType)
+		if !connectivityOK {
+			output.UserOut.Println("✗ Network connectivity failed")
+			output.UserOut.Println("  Check firewall settings for port 9003")
 			return 1
 		}
-	}
-
-	connectivityOK := runConnectivityTest(app, envType)
-	if !connectivityOK {
-		output.UserOut.Println("✗ Network connectivity failed")
-		output.UserOut.Println("  Check firewall settings for port 9003")
-		return 1
 	}
 	output.UserOut.Println()
 
@@ -672,7 +686,7 @@ func runInteractiveXdebugDiagnose() int {
 	// Step 3.5: Validate xdebug_ide_location for WSL2 scenarios
 	needsWSL2Setting := false
 	var setupDescription string
-	if envType == "wsl2-nat" || envType == "wsl2-mirrored" {
+	if environment.IsWSL2Environment(envType) {
 		switch ideLocation {
 		case "windows":
 			if ideType == "vscode" {
@@ -735,17 +749,42 @@ func detectAndDisplayEnvironment(app *ddevapp.DdevApp) string {
 
 	var envType string
 	if nodeps.IsWSL2() {
-		if nodeps.IsWSL2MirroredMode() {
-			envType = "wsl2-mirrored"
-			output.UserOut.Print("Platform: WSL2 (mirrored) ")
-			if nodeps.IsWSL2HostAddressLoopbackEnabled() {
-				output.UserOut.Println("✓")
-			} else {
-				output.UserOut.Println("✗ hostAddressLoopback not set")
-			}
+		mode, err := nodeps.GetWSL2NetworkingMode()
+		if err != nil {
+			envType = environment.DDEVEnvironmentWSL2
+			output.UserOut.Printf("Platform: WSL2 (unknown networking mode: %v)\n", err)
 		} else {
-			envType = "wsl2-nat"
-			output.UserOut.Println("Platform: WSL2 (NAT)")
+			switch mode {
+			case "mirrored":
+				envType = environment.DDEVEnvironmentWSL2Mirrored
+				output.UserOut.Print("Platform: WSL2 (mirrored) ")
+				if nodeps.IsWSL2HostAddressLoopbackEnabled() {
+					output.UserOut.Println("✓")
+				} else {
+					output.UserOut.Println("✗ hostAddressLoopback not set")
+				}
+			case "virtioproxy":
+				envType = environment.DDEVEnvironmentWSL2VirtioProxy
+				output.UserOut.Println("Platform: WSL2 (virtioproxy)")
+				output.UserOut.Println("  ⚠ VirtioProxy mode: WSL2 distro and containers cannot contact the Windows host.")
+				output.UserOut.Println("    A Windows-side IDE is not reachable. Use an IDE inside WSL2 via WSLg:")
+				output.UserOut.Println("      ddev config global --xdebug-ide-location=wsl2")
+				output.UserOut.Println("    Accessing DDEV sites from a Windows browser works normally.")
+			case "none":
+				envType = environment.DDEVEnvironmentWSL2None
+				output.UserOut.Println("Platform: WSL2 (networking=none)")
+				output.UserOut.Println("  ⚠ WSL2 networking=none: the distro has no internet access.")
+				output.UserOut.Println("    Composer, npm, and other network tools will not work.")
+				output.UserOut.Println("    Xdebug cannot reach a Windows-side IDE.")
+				output.UserOut.Println("    Use an IDE inside WSL2 (via WSLg) or change networkingMode in .wslconfig.")
+			case "bridged":
+				envType = environment.DDEVEnvironmentWSL2Bridged
+				output.UserOut.Println("Platform: WSL2 (bridged)")
+				output.UserOut.Println("  ⚠ WSL2 bridged networking (deprecated by Microsoft) has not been tested; behavior may vary")
+			default: // "nat" is the normal case
+				envType = environment.DDEVEnvironmentWSL2
+				output.UserOut.Println("Platform: WSL2 (NAT)")
+			}
 		}
 	} else if runtime.GOOS == "darwin" {
 		envType = "macos"
@@ -768,20 +807,23 @@ func detectAndDisplayEnvironment(app *ddevapp.DdevApp) string {
 func runConnectivityTest(app *ddevapp.DdevApp, envType string) bool {
 	xdebugIDELocation := globalconfig.DdevGlobalConfig.XdebugIDELocation
 
-	// Determine which connection test to use based on IDE location
-	// If xdebug_ide_location=wsl2, the listener runs in WSL2, use simple connection test
-	// Otherwise in WSL2, the listener runs on Windows, use WSL2 NAT connection test
-	if (envType == "wsl2-nat" || envType == "wsl2-mirrored") && xdebugIDELocation != "wsl2" {
+	switch {
+	case envType == environment.DDEVEnvironmentWSL2None:
+		// Networking is disabled; no connectivity to Windows host is possible.
+		// Callers should skip this test for wsl2-none.
+		return false
+	case environment.IsWSL2Environment(envType) && xdebugIDELocation != "wsl2":
+		// WSL2 (NAT, mirrored, virtioproxy, bridged) with IDE on Windows side
 		output.UserOut.Println("  Testing connection to Windows host...")
 		return !testWSL2NATConnection(app)
-	}
-
-	if envType == "wsl2-nat" || envType == "wsl2-mirrored" {
+	case environment.IsWSL2Environment(envType):
+		// xdebug_ide_location=wsl2: IDE is inside WSL2
 		output.UserOut.Println("  Testing connection to WSL2 host...")
-	} else {
+		return !testSimpleConnection(app)
+	default:
 		output.UserOut.Println("  Testing connection to host...")
+		return !testSimpleConnection(app)
 	}
-	return !testSimpleConnection(app)
 }
 
 // promptIDEInfo asks the user about their IDE setup
@@ -823,7 +865,7 @@ func promptIDEInfo(envType string) (ideType string, ideLocation string) {
 		ideName = "your IDE"
 	}
 
-	if envType == "wsl2-nat" || envType == "wsl2-mirrored" {
+	if environment.IsWSL2Environment(envType) {
 		if ideType == "vscode" {
 			locationItems = []string{
 				"VS Code on Windows using WSL extension (recommended)",
@@ -868,7 +910,7 @@ func promptIDEInfo(envType string) (ideType string, ideLocation string) {
 	if err != nil {
 		ideLocation = "local"
 	} else {
-		if envType == "wsl2-nat" || envType == "wsl2-mirrored" {
+		if environment.IsWSL2Environment(envType) {
 			if ideType == "vscode" {
 				// VS Code has 5 options
 				switch idx {
@@ -928,7 +970,7 @@ func promptEnableListening(projectName string, ideType string, ideLocation strin
 		output.UserOut.Println("PhpStorm: Run -> Start Listening for PHP Debug Connections")
 		output.UserOut.Println("Verify: Settings -> PHP -> Debug -> Port 9003, Accept external connections")
 	case "vscode":
-		isWSL2 := envType == "wsl2-nat" || envType == "wsl2-mirrored"
+		isWSL2 := environment.IsWSL2Environment(envType)
 		launchOK := checkVSCodeLaunchJSON(".vscode/launch.json")
 
 		if launchOK {
