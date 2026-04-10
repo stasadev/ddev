@@ -184,7 +184,7 @@ func CheckDockerBuildxVersion(dockerVersionMatrix DockerVersionMatrix) error {
 
 	v, err := GetBuildxVersion()
 	if err != nil {
-		return fmt.Errorf("compose build requires buildx %s or later: %v.\nPlease install buildx: https://github.com/docker/buildx#installing", dockerVersionMatrix.BuildxVersion, err)
+		return fmt.Errorf("compose build requires buildx %s or later: %v.\nPlease install buildx: https://github.com/docker/buildx#installing\nMore details: https://ddev.com/blog/docker-buildx-requirement-v1-25-1/", dockerVersionMatrix.BuildxVersion, err)
 	}
 
 	pluginPath, err := GetBuildxLocation()
@@ -193,7 +193,7 @@ func CheckDockerBuildxVersion(dockerVersionMatrix DockerVersionMatrix) error {
 	}
 
 	if versions.LessThan(v, dockerVersionMatrix.BuildxVersion) {
-		return fmt.Errorf("compose build requires buildx %s or later.\nInstalled docker buildx: %s (plugin path: %s)\nPlease update buildx: https://github.com/docker/buildx#installing", dockerVersionMatrix.BuildxVersion, v, pluginPath)
+		return fmt.Errorf("compose build requires buildx %s or later.\nInstalled docker buildx: %s (plugin path: %s)\nPlease update buildx: https://github.com/docker/buildx#installing\nMore details: https://ddev.com/blog/docker-buildx-requirement-v1-25-1/", dockerVersionMatrix.BuildxVersion, v, pluginPath)
 	}
 
 	return nil
