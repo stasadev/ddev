@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ddev/ddev/pkg/nodeps"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ var (
 		l := log.New()
 		l.SetOutput(os.Stdout)
 		logLevel := log.InfoLevel
-		if os.Getenv("DDEV_DEBUG") == "true" || os.Getenv("DDEV_VERBOSE") == "true" {
+		if nodeps.IsEnvTrue("DDEV_DEBUG") || nodeps.IsEnvTrue("DDEV_VERBOSE") {
 			logLevel = log.DebugLevel
 		}
 		l.SetLevel(logLevel)
@@ -110,7 +111,8 @@ func ParseBoolFlag(long string, short string) bool {
 // ColorsEnabled returns true if colored output is enabled
 // Implementation from https://no-color.org/
 func ColorsEnabled() bool {
-	return os.Getenv("NO_COLOR") == "" || os.Getenv("NO_COLOR") == "0"
+	noColor, set := os.LookupEnv("NO_COLOR")
+	return !set || noColor == ""
 }
 
 // WaitTimer tracks elapsed time for wait operations with inline output
@@ -124,7 +126,7 @@ type WaitTimer struct {
 func StartWait(message string) *WaitTimer {
 	if !JSONOutput {
 		_, _ = fmt.Fprintf(os.Stdout, "%s...", message)
-		if os.Getenv("DDEV_DEBUG") == "true" || os.Getenv("DDEV_VERBOSE") == "true" {
+		if nodeps.IsEnvTrue("DDEV_DEBUG") || nodeps.IsEnvTrue("DDEV_VERBOSE") {
 			_, _ = fmt.Fprintln(os.Stdout)
 		}
 	}

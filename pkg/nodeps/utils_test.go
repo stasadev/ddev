@@ -244,7 +244,7 @@ func TestIsCodespaces(t *testing.T) {
 	// IsCodespaces should return true only if:
 	// 1. DDEV_PRETEND_CODESPACES=true (for testing purposes), OR
 	// 2. Running on Linux AND CODESPACES=true
-	pretendCodespaces := os.Getenv("DDEV_PRETEND_CODESPACES") == "true"
+	pretendCodespaces := nodeps.IsEnvTrue("DDEV_PRETEND_CODESPACES")
 	codespacesEnv := os.Getenv("CODESPACES") == "true"
 	isLinux := runtime.GOOS == "linux"
 
@@ -455,6 +455,40 @@ hostAddressLoopback=true`,
 		t.Run(name, func(t *testing.T) {
 			result := nodeps.ParseWSLConfigHostAddressLoopback(tc.content)
 			require.Equal(t, tc.expected, result, "ParseWSLConfigHostAddressLoopback(%q)", tc.content)
+		})
+	}
+}
+
+// TestIsEnvTrue tests IsEnvTrue with various env var values.
+// Accepted values match strconv.ParseBool: 1, t, T, TRUE, true, True,
+// 0, f, F, FALSE, false, False.
+func TestIsEnvTrue(t *testing.T) {
+	tests := map[string]struct {
+		value    string
+		expected bool
+	}{
+		"true":  {value: "true", expected: true},
+		"TRUE":  {value: "TRUE", expected: true},
+		"True":  {value: "True", expected: true},
+		"1":     {value: "1", expected: true},
+		"t":     {value: "t", expected: true},
+		"T":     {value: "T", expected: true},
+		"false": {value: "false", expected: false},
+		"FALSE": {value: "FALSE", expected: false},
+		"False": {value: "False", expected: false},
+		"0":     {value: "0", expected: false},
+		"f":     {value: "f", expected: false},
+		"F":     {value: "F", expected: false},
+		"yes":   {value: "yes", expected: false},
+		"empty": {value: "", expected: false},
+	}
+
+	const testEnv = "DDEV_TEST_IS_ENV_TRUE"
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(testEnv, tc.value)
+			require.Equal(t, tc.expected, nodeps.IsEnvTrue(testEnv))
+			require.Equal(t, !tc.expected, nodeps.IsEnvFalse(testEnv))
 		})
 	}
 }

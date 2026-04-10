@@ -23,14 +23,14 @@ var ValidOmitContainers = map[string]bool{
 }
 
 // DdevNoInstrumentation is set to true if the env var is set
-var DdevNoInstrumentation = os.Getenv("DDEV_NO_INSTRUMENTATION") == "true" || os.Getenv("CI") == "true"
+var DdevNoInstrumentation = nodeps.IsEnvTrue("DDEV_NO_INSTRUMENTATION") || os.Getenv("CI") == "true"
 
 // DdevDebug is set to true if the env var is set
 // If DdevVerbose is true, DdevDebug is true
-var DdevDebug = os.Getenv("DDEV_DEBUG") == "true" || DdevVerbose
+var DdevDebug = nodeps.IsEnvTrue("DDEV_DEBUG") || DdevVerbose
 
 // DdevVerbose is set to true if the env var is set
-var DdevVerbose = os.Getenv("DDEV_VERBOSE") == "true"
+var DdevVerbose = nodeps.IsEnvTrue("DDEV_VERBOSE")
 
 var ValidXdebugIDELocations = []string{XdebugIDELocationContainer, XdebugIDELocationWSL2, ""}
 
@@ -39,7 +39,7 @@ var GoroutineCount = 0
 
 // IsInteractive returns true if we are running in an interactive mode
 func IsInteractive() bool {
-	return os.Getenv("DDEV_NONINTERACTIVE") != "true"
+	return nodeps.IsEnvFalse("DDEV_NONINTERACTIVE")
 }
 
 // IsValidXdebugIDELocation limits the choices for XdebugIDELocation

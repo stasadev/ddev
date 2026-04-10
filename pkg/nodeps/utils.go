@@ -88,7 +88,7 @@ func IsLinux() bool {
 
 // IsCodespaces returns true if running on GitHub Codespaces
 func IsCodespaces() bool {
-	if os.Getenv("DDEV_PRETEND_CODESPACES") == "true" {
+	if IsEnvTrue("DDEV_PRETEND_CODESPACES") {
 		return true
 	}
 	return IsLinux() && os.Getenv("CODESPACES") == "true"
@@ -96,7 +96,7 @@ func IsCodespaces() bool {
 
 // IsDevcontainer returns true if running in any Devcontainer (including Codespaces)
 func IsDevcontainer() bool {
-	if os.Getenv("DDEV_PRETEND_DEVCONTAINER") == "true" {
+	if IsEnvTrue("DDEV_PRETEND_DEVCONTAINER") {
 		return true
 	}
 	return IsLinux() && (os.Getenv("CODESPACES") == "true" || os.Getenv("IN_DEVCONTAINER") == "true")
@@ -204,4 +204,16 @@ func ParseURL(rawURL string) (scheme string, urlWithoutPort string, port string)
 	}
 
 	return scheme, urlWithoutPort, port
+}
+
+// IsEnvTrue returns true if the given environment variable
+// has a value accepted by strconv.ParseBool.
+func IsEnvTrue(envVar string) bool {
+	val, _ := strconv.ParseBool(os.Getenv(envVar))
+	return val
+}
+
+// IsEnvFalse returns the opposite of IsEnvTrue
+func IsEnvFalse(envVar string) bool {
+	return !IsEnvTrue(envVar)
 }

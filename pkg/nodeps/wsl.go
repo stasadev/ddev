@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/ddev/ddev/pkg/output"
 )
 
 // IsWSL2 returns true if running WSL2
@@ -16,7 +14,7 @@ func IsWSL2() bool {
 		return false
 	}
 	// First, try checking env variable
-	if os.Getenv(`WSL_INTEROP`) != "" {
+	if os.Getenv("WSL_INTEROP") != "" {
 		return true
 	}
 	// But that doesn't always work, so check for existence of microsoft in /proc/version
@@ -35,7 +33,6 @@ func IsWSL2MirroredMode() bool {
 	}
 	mode, err := GetWSL2NetworkingMode()
 	if err != nil {
-		output.UserErr.Warnf("Unable to get WSL2 networking mode: %v", err)
 		return false
 	}
 	return mode == "mirrored"
