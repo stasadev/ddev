@@ -613,7 +613,7 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 
 	image := config.Image
 	if image == "" {
-		return "", "", fmt.Errorf("RunSimpleContainerExtended requires config.Image to be set")
+		return "", "", fmt.Errorf("image name is not set")
 	}
 
 	// Ensure image string includes a tag
@@ -698,7 +698,8 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 
 	c, err := apiClient.ContainerCreate(ctx, client.ContainerCreateOptions{Config: config, HostConfig: hostConfig, Name: name})
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create/start Docker container %v (%v, %v): %v", name, config, hostConfig, err)
+		util.Debug("RunSimpleContainer: failed to create container %s with config=%+v and hostConfig=%+v: %v", name, config, hostConfig, err)
+		return "", "", fmt.Errorf("failed to create container %s: %v", name, err)
 	}
 
 	if removeContainerAfterRun {
@@ -720,7 +721,7 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 
 		resp, err := apiClient.ContainerAttach(ctx, c.ID, attachOptions)
 		if err != nil {
-			return c.ID, "", fmt.Errorf("failed to attach to container: %v", err)
+			return c.ID, "", fmt.Errorf("failed to attach to container %s (%s): %v", name, TruncateID(c.ID), err)
 		}
 		hijackedResp = &resp.HijackedResponse
 		defer hijackedResp.Close()
@@ -763,7 +764,7 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 	}
 
 	if _, err := apiClient.ContainerStart(ctx, c.ID, client.ContainerStartOptions{}); err != nil {
-		return c.ID, "", fmt.Errorf("failed to StartContainer: %v", err)
+		return c.ID, "", fmt.Errorf("failed to start container %s (%s): %v", name, TruncateID(c.ID), err)
 	}
 
 	exitCode := 0
@@ -777,33 +778,34 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 		defer waitCancel()
 		tickChan := time.NewTicker(500 * time.Millisecond)
 		defer tickChan.Stop()
-		pollCount := 0
 		for {
-			pollCount++
-			inspectStart := time.Now()
-			util.Debug("RunSimpleContainer: ContainerInspect attempt #%d for %s (container=%s)", pollCount, config.Image, c.ID[:12])
 			info, err := apiClient.ContainerInspect(waitCtx, c.ID, client.ContainerInspectOptions{})
-			inspectElapsed := time.Since(inspectStart)
-			util.Debug("RunSimpleContainer: ContainerInspect #%d returned after %v for %s, err=%v", pollCount, inspectElapsed, c.ID[:12], err)
 			if err != nil {
 				if waitCtx.Err() != nil {
-					return c.ID, "", fmt.Errorf("timed out after %s waiting for container %s to stop", timeout, c.ID)
+					var health any = "none"
+					if s := info.Container.State; s != nil && s.Health != nil {
+						health = *s.Health
+					}
+					util.Debug("RunSimpleContainer: container %s (%s) state=%+v health=%+v, err=%v, waitErr=%v", name, TruncateID(c.ID), info.Container.State, health, err, waitCtx.Err())
+					return c.ID, "", fmt.Errorf("timed out after %s waiting for container %s (%s) to stop", timeout, name, TruncateID(c.ID))
 				}
-				return c.ID, "", fmt.Errorf("failed to inspect container: %v", err)
+				return c.ID, "", fmt.Errorf("failed to inspect container %s (%s): %v", name, TruncateID(c.ID), err)
 			}
 			if info.Container.State == nil {
-				return c.ID, "", fmt.Errorf("container %s has nil state", c.ID)
+				return c.ID, "", fmt.Errorf("container %s (%s) has <nil> state", name, TruncateID(c.ID))
 			}
-			util.Debug("RunSimpleContainer: container %s state: Running=%v Status=%s ExitCode=%d StartedAt=%s",
-				c.ID[:12], info.Container.State.Running, info.Container.State.Status,
-				info.Container.State.ExitCode, info.Container.State.StartedAt)
 			if !info.Container.State.Running {
 				exitCode = info.Container.State.ExitCode
 				break
 			}
 			select {
 			case <-waitCtx.Done():
-				return c.ID, "", fmt.Errorf("timed out after %s waiting for container %s to stop", timeout, c.ID)
+				var health any = "none"
+				if s := info.Container.State; s != nil && s.Health != nil {
+					health = *s.Health
+				}
+				util.Debug("RunSimpleContainer: container %s (%s) state=%+v health=%+v, err=%v", name, TruncateID(c.ID), info.Container.State, health, err)
+				return c.ID, "", fmt.Errorf("timed out after %s waiting for container %s (%s) to stop", timeout, name, TruncateID(c.ID))
 			case <-tickChan.C:
 			}
 		}
@@ -823,6 +825,7 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 	var exitErr error
 
 	if exitCode != 0 {
+		// "container run failed with exit code" is used as a marker in `ddev auth ssh`
 		exitErr = fmt.Errorf("container run failed with exit code %d", exitCode)
 	}
 
@@ -835,14 +838,14 @@ func RunSimpleContainerExtended(name string, config *container.Config, hostConfi
 	options := client.ContainerLogsOptions{ShowStdout: true, ShowStderr: true}
 	rc, err := apiClient.ContainerLogs(ctx, c.ID, options)
 	if err != nil {
-		return c.ID, "", fmt.Errorf("failed to get container logs: %v", err)
+		return c.ID, "", fmt.Errorf("failed to get container %s (%s) logs: %v", name, TruncateID(c.ID), err)
 	}
 	defer rc.Close()
 
 	var stdout bytes.Buffer
 	_, err = stdcopy.StdCopy(&stdout, &stdout, rc)
 	if err != nil {
-		return c.ID, "", fmt.Errorf("failed to copy container logs: %v", err)
+		return c.ID, "", fmt.Errorf("failed to copy container %s (%s) logs: %v", name, TruncateID(c.ID), err)
 	}
 
 	return c.ID, stdout.String(), exitErr
