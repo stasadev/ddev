@@ -269,6 +269,15 @@ func init() {
 			appTypeDetect:        isWordpressApp,
 			importFilesAction:    wordpressImportFilesAction,
 		},
+
+		nodeps.AppTypeWPBedrock: {
+			appTypeDetect:        isWPBedrockApp,
+			postStartAction:      wpBedrockPostStartAction,
+			hookDefaultComments:  getWordpressHooks,
+			configOverrideAction: wpBedrockConfigOverrideAction,
+			uploadDirs:           getWPBedrockUploadDirs,
+			importFilesAction:    wordpressImportFilesAction,
+		},
 	}
 
 	// Now add "drupal" type as a copy of latest stable, but don't allow it to be detected as a type

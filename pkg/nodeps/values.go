@@ -111,6 +111,7 @@ const (
 	AppTypeShopware6    = "shopware6"
 	AppTypeTYPO3        = "typo3"
 	AppTypeWordPress    = "wordpress"
+	AppTypeWPBedrock    = "wp-bedrock"
 )
 
 // Ports and other defaults

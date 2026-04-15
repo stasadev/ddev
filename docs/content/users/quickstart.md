@@ -3077,31 +3077,39 @@ There are several easy ways to use DDEV with WordPress:
 
     ```bash
     mkdir -p my-wp-bedrock-site && cd my-wp-bedrock-site
-    ddev config --project-type=wordpress --docroot=web
+    ddev config --project-type=wp-bedrock
     ddev start
     ddev composer create-project roots/bedrock
     ```
 
-    Rename the file `.env.example` to `.env` in the project root and make the following adjustments:
+    DDEV automatically manages the `.env` file with the correct database credentials and `WP_HOME` URL. No manual `.env` configuration is needed.
 
-    ```
-    DB_NAME=db
-    DB_USER=db
-    DB_PASSWORD=db
-    DB_HOST=db
-    WP_HOME=${DDEV_PRIMARY_URL}
-    WP_SITEURL=${WP_HOME}/wp
-    WP_ENV=development
-    ```
-
-    You can then install the site with WP-CLI and log into the admin interface:
+    You can then run:
 
     ```bash
-    ddev wp core install --url='$DDEV_PRIMARY_URL' --title='My WordPress site' --admin_user=admin --admin_password=admin --admin_email=admin@example.com
-    ddev launch wp-admin/
+    ddev wp core install --url='$DDEV_PRIMARY_URL' --title='My Bedrock Site' --admin_user=admin --admin_password=admin --admin_email=admin@example.com
+    ddev launch /wp/wp-admin/
     ```
 
     For more details, see [Bedrock installation](https://docs.roots.io/bedrock/master/installation/).
+
+    ??? tip "Prefer to run as a script?"
+        To run the whole setup as a script, examine and run this script:
+
+        ```bash
+        cat > setup-wp-bedrock.sh << 'EOF'
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p my-wp-bedrock-site && cd my-wp-bedrock-site
+        ddev config --project-type=wp-bedrock
+        ddev start -y
+        ddev composer create-project roots/bedrock
+        ddev wp core install --url='$DDEV_PRIMARY_URL' --title='My Bedrock Site' --admin_user=admin --admin_password=admin --admin_email=admin@example.com
+        ddev launch /wp/wp-admin/
+        EOF
+        chmod +x setup-wp-bedrock.sh
+        ./setup-wp-bedrock.sh
+        ```
 
 === "Git Clone"
 
