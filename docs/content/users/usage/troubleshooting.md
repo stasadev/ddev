@@ -65,7 +65,25 @@ Port 443 is busy, using 33001 instead, see https://ddev.com/s/port-conflict
 
 This means that DDEV has detected that it can't use the expected port (`443`) in this example, because another application is using it. If this is OK, you don't need to take any action. Most users want to use the default ports though (`80` and `443`) so you may want to figure out what the conflict is and solve it (usually by stopping the competing application).
 
-If you want to figure out what is using the default ports, use the techniques listed below to stop the competing application or to change the default ports.
+`ddev utility port-diagnose`, run from your project directory, can likely explain what's going on. It checks each port your project needs, identifies the blocking process by name and PID, and suggests how to stop it:
+
+```
+$ ddev utility port-diagnose
+Port diagnostics for project: my-project
+Port 80 (router HTTP): IN USE by apache2 (PID 1234, cmd=/usr/sbin/apache2 -k start) [Linux]
+  sudo systemctl stop apache2 && sudo systemctl disable apache2
+Port 443 (router HTTPS): Available
+```
+
+On WSL2, it checks both Linux/WSL2 and Windows. If a port conflict is held by a root-owned process (such as `docker-proxy` under rootful Docker CE), the tool will ask for permission before running any `sudo` command, showing the exact command it intends to run. You can pre-approve this with `--allow-sudo`:
+
+```
+ddev utility port-diagnose --allow-sudo
+```
+
+The `--allow-sudo` flag is useful in scripts or when you know elevated detection will be needed and want to avoid the interactive prompt. When running non-interactively (CI, pipes) without `--allow-sudo`, sudo escalation is skipped.
+
+If port-diagnose doesn't resolve it, the methods below explain how to stop the competing application or configure DDEV to use different ports.
 
 If you do get messages like:
 
@@ -75,32 +93,11 @@ or
 
 > Error response from daemon: Ports are not available: exposing port TCP 127.0.0.1:8025 -> 0.0.0.0:0: listen tcp 127.0.0.1:8025: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
 
-it means that some other process is using a needed port, and use a number of techniques to sort this out, although this is rarely necessary now the DDEV can use alternate ports.
+it means some other process is using a needed port. Stop all Docker containers that might be using the port by running `ddev poweroff && docker rm -f $(docker ps -aq)`, then restart Docker.
 
-1. Stop all Docker containers that might be using the port by running `ddev poweroff && docker rm -f $(docker ps -aq)`, then restart Docker.
-2. If you’re using another local development environment that uses these ports (MAMP, WAMP, Lando, etc.), consider stopping it.
-3. Fix port conflicts by configuring DDEV globally to use different ports.
-4. Fix port conflicts by stopping the competing application.
-
-### Method 1: Stop the conflicting application
+### Method 1: Stop the competing application
 
 Consider `lando poweroff` for Lando, or `fin system stop` for Docksal, or stop MAMP using GUI interface or [`stop.sh`](https://stackoverflow.com/a/17750194/215713).
-
-### Method 2: Fix port conflicts by configuring your project to use different ports
-
-To configure DDEV to use non-conflicting ports, remove router port configuration from the project and set it globally to different values. This will work for most people:
-
-```
-ddev config global --router-http-port=8080 --router-https-port=8443
-ddev config --router-http-port="" --router-https-port=""
-ddev restart
-```
-
-This changes all projects' HTTP URLs to `http://yoursite.ddev.site:8080` and the HTTPS URLs to `https://yoursite.ddev.site:8443`.
-
-### Method 3: Fix port conflicts by stopping the competing application
-
-Alternatively, stop the other application.
 
 Probably the most common conflicting application is Apache running locally. It can often be stopped gracefully (but temporarily) with:
 
@@ -128,50 +125,19 @@ Most people will want to use ports 80 and 443, the default HTTP and HTTPS ports 
 * Lando: If you’ve previously used Lando, try running `lando poweroff`.
 * IIS on Windows (can affect WSL2). You’ll have to disable it in the Windows settings.
 
-To dig deeper, you can use a number of tools to find out what process is listening.
+You can also probe a port with `curl` to get a hint about which application is responding: `curl -I localhost` or `curl -I -k https://localhost:443`.
 
-On macOS and Linux, try the `lsof` tool on ports 80 or 443 or whatever port you’re having trouble with:
+### Method 2: Fix port conflicts by configuring your project to use different ports
 
-```
-$ sudo lsof -i :443 -sTCP:LISTEN
-COMMAND  PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
-nginx   1608 www-data   46u  IPv4  13913      0t0  TCP *:http (LISTEN)
-nginx   5234     root   46u  IPv4  13913      0t0  TCP *:http (LISTEN)
-```
-
-You can also use the `netstat -anv -p tcp` command to examine processes running on specific ports:
+To configure DDEV to use non-conflicting ports, remove router port configuration from the project and set it globally to different values. This will work for most people:
 
 ```
-$ sudo netstat -anv -p tcp | egrep 'Proto|(\*\.(80|443))'
-Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)      rhiwat  shiwat    pid   epid state  options           gencnt    flags   flags1 usscnt rtncnt fltrs
-tcp4       0      0  *.80                   *.*                    LISTEN       131072  131072  10521      0 00100 00000006 000000000000965d 00000000 00000900      1      0 000001
-tcp4       0      0  *.443                  *.*                    LISTEN       131072  131072  10521      0 00100 00000006 000000000000965c 00000000 00000900      1      0 000001```
+ddev config global --router-http-port=8080 --router-https-port=8443
+ddev config --router-http-port="" --router-https-port=""
+ddev restart
 ```
 
-The `pid` column shows the process ID of the process listening on the port. In this case, it’s `10521`. You can use `ps` to find out what process that is:
-
-```
-$ ps -p 10521
-$ ps -fp 10521
-UID   PID  PPID   C STIME   TTY           TIME CMD
-501 10521     1   0 12:35PM ??         0:05.16 /Applications/OrbStack.app/Contents/MacOS/../Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper vmgr -build-id 339077377 -handoff
-```
-
-On Windows CMD, use [sysinternals tcpview](https://docs.microsoft.com/en-us/sysinternals/downloads/tcpview) or try using `netstat` and `tasklist` to find the process ID:
-
-```
-> netstat -aon | findstr ":80.*LISTENING"
-  TCP    127.0.0.1:80           0.0.0.0:0              LISTENING       5760
-  TCP    127.0.0.1:8025         0.0.0.0:0              LISTENING       5760
-  TCP    127.0.0.1:8036         0.0.0.0:0              LISTENING       5760
-
-> tasklist | findstr "5760"
-com.docker.backend.exe        5760 Services                   0      9,536 K
-```
-
-The resulting output displays which command is running and its PID. Choose the appropriate method to stop the other server.
-
-You may also be able to find what’s using a port using `curl`. On Linux, macOS, or in Git Bash on Windows, `curl -I localhost` or `curl -I -k https://localhost:443`. The result may give you a hint about which application is at fault.
+This changes all projects’ HTTP URLs to `http://yoursite.ddev.site:8080` and the HTTPS URLs to `https://yoursite.ddev.site:8443`.
 
 We welcome your [suggestions](https://github.com/ddev/ddev/issues/new) based on other issues you've run into and your troubleshooting technique.
 
@@ -188,7 +154,7 @@ DDEV will rely on Docker to report actual port conflicts. This can happen when s
 
 ### Debugging Port Issues on WSL2
 
-On WSL2 it’s harder to debug this because the port may be occupied either on the traditional Windows side, or within your WSL2 distro. This means you may have to debug it in both places, perhaps using both the Windows techniques shown above and the Linux techniques shown above. The ports are shared between Windows and WSL2, so they can be broken on either side.
+On WSL2 the port may be occupied either on the traditional Windows side or within the WSL2 distro. `ddev utility port-diagnose` checks both sides automatically. The ports are shared between Windows and WSL2, so a conflict on either side blocks DDEV.
 
 ## Database Container Fails to Start
 
