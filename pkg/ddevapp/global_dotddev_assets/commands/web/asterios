@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+#ddev-generated
+## Description: Run asterios CLI inside the web container
+## Usage: asterios [flags] [args]
+## Example: "ddev asterios list" or "ddev asterios view:clear"
+## Aliases: ast
+## ProjectTypes: asterios
+## ExecRaw: true
+## MutagenSync: true
+
+# Ignore anything we find in the mounted global commands
+PATH=${PATH//\/mnt\/ddev-global-cache\/global-commands\/web/}
+
+if ! command -v asterios >/dev/null; then
+  echo "asterios is not available. You may need to 'ddev composer require asterios/core'"
+  exit 1
+fi
+
+asterios "$@"

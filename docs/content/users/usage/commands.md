@@ -240,6 +240,17 @@ Run the `artisan` command; available only in projects of type `laravel`, and onl
 ddev artisan list
 ```
 
+## `asterios`
+
+*Alias: `ast`.*
+
+Run the `asterios` command; available only in projects of type `asterios`, and only available if `asterios` is in the project root.
+
+```shell
+# Show all asterios subcommands
+ddev asterios list
+```
+
 ## `auth`
 
 Authentication commands.
